@@ -57,19 +57,17 @@ const App: React.FC = () => {
       
       switch (lastMsg.type) {
         case 'JOINED':
-          // Host received a join request
-          if (gameMode === 'MULTI_HOST') {
-            setOpponentProfile(lastMsg.profile);
-            // Send Welcome back so guest knows who host is
-            sendMessage({ type: 'WELCOME', profile: userProfile });
-          }
+          // Host received a join request. 
+          // We accept this even if gameMode is 'SINGLE' because we are in the lobby setup phase.
+          setOpponentProfile(lastMsg.profile);
+          // Send Welcome back so guest knows who host is
+          sendMessage({ type: 'WELCOME', profile: userProfile });
           break;
 
         case 'WELCOME':
           // Guest received welcome from host
-          if (gameMode === 'MULTI_GUEST') {
-            setOpponentProfile(lastMsg.profile);
-          }
+          // We accept this if we are trying to join (MULTI_GUEST) or in lobby
+          setOpponentProfile(lastMsg.profile);
           break;
 
         case 'START_ROUND':
@@ -102,7 +100,7 @@ const App: React.FC = () => {
       // Send my profile to host immediately upon connection
       sendMessage({ type: 'JOINED', profile: userProfile });
     }
-  }, [isConnected, gameMode]); // Removing userProfile from dep array to avoid loops, assumes profile set before connect
+  }, [isConnected, gameMode]); // Removing userProfile from dep array to avoid loops
 
   // --- Score Calculation & Collision Logic ---
   useEffect(() => {
@@ -186,8 +184,16 @@ const App: React.FC = () => {
     if (!isConnected || !opponentProfile) return; // Prevent crash if no one joined
     setGameMode('MULTI_HOST');
     setDuration(selectedDuration);
-    resetGame();
-    startRound();
+    
+    // We manually reset game variables here to avoid race conditions with state updates
+    setScoresHistory([]);
+    setCurrentRoundIndex(0);
+    setRoundLetters([]);
+    startNewRoundCleanup();
+
+    // Pass true to indicate we are forcefully starting as host
+    // and pass the initial round index (0) explicitly
+    startRound(true, 0);
   };
 
   const joinGame = (roomId: string) => {
@@ -212,9 +218,9 @@ const App: React.FC = () => {
     setFinalOpponentResult(null);
   };
 
-  const startRound = () => {
+  const startRound = (isForceHost = false, explicitRoundIndex?: number) => {
     let letter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-    // Simple retry to avoid duplicates, but not infinite loop if alphabet exhausted (though 5 rounds < 20 letters)
+    // Simple retry to avoid duplicates
     let attempts = 0;
     while (roundLetters.includes(letter) && attempts < 50) {
        letter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
@@ -226,11 +232,15 @@ const App: React.FC = () => {
     startNewRoundCleanup();
     setStatus('COUNTDOWN');
 
-    if (gameMode === 'MULTI_HOST') {
+    // Determine the round index to send (use explicit if provided, else current state)
+    const roundIdxToSend = explicitRoundIndex !== undefined ? explicitRoundIndex : currentRoundIndex;
+
+    // Check if we are hosting (either via state or force flag)
+    if (gameMode === 'MULTI_HOST' || isForceHost) {
       sendMessage({
         type: 'START_ROUND',
         letter,
-        roundIndex: currentRoundIndex,
+        roundIndex: roundIdxToSend,
         totalRounds: TOTAL_ROUNDS,
         duration: duration
       });
@@ -262,8 +272,25 @@ const App: React.FC = () => {
 
   const handleNext = () => {
     if (currentRoundIndex < TOTAL_ROUNDS - 1) {
-      setCurrentRoundIndex(prev => prev + 1);
-      startRound();
+      // Increment locally
+      const nextIndex = currentRoundIndex + 1;
+      setCurrentRoundIndex(nextIndex);
+      
+      // Start next round (passing undefined for forcedHost as state should be updated by now, and explicit index)
+      // Actually we can rely on state now as this is user triggered well after mount
+      // But to be safe in multiplayer sync, we just call startRound() which uses state.
+      // Wait, startRound uses currentRoundIndex state. React state update is async.
+      // We must pass the NEXT index explicitly to startRound to ensure the message is correct.
+      
+      // But we can't pass 'nextIndex' to startRound easily without refactoring startRound logic completely
+      // because startRound generates the letter and sends the message.
+      
+      // Better approach for Next Round:
+      // 1. Update state
+      // 2. Use useEffect to trigger startRound? No, user click.
+      
+      // Let's modify startRound to use a "nextIndex" param if provided, otherwise use state.
+      startRound(false, nextIndex);
     } else {
       setStatus('GAME_OVER');
       if (gameMode === 'MULTI_HOST') {
