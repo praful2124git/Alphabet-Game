@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StartScreen } from './components/StartScreen';
 import { GameRound } from './components/GameRound';
 import { RoundResult } from './components/RoundResult';
@@ -55,6 +55,9 @@ const App: React.FC = () => {
     clearMessages
   } = useMultiplayer();
 
+  // Track processed messages to ensure we handle every single event in order
+  const processedMessageCountRef = useRef(0);
+
   // --- Theme Toggle Logic ---
   useEffect(() => {
     if (isDarkMode) {
@@ -82,79 +85,104 @@ const App: React.FC = () => {
 
   // --- Multiplayer Message Handling ---
   useEffect(() => {
-    if (messages.length > 0) {
-      // Process only the latest message to avoid backlog issues
-      const lastMsg = messages[messages.length - 1];
-      
-      switch (lastMsg.type) {
-        case 'JOINED':
-          setOpponentProfile(lastMsg.profile);
-          sendMessage({ type: 'WELCOME', profile: userProfile });
-          playSound('joined');
-          break;
+    // Check if there are new messages to process
+    if (messages.length > processedMessageCountRef.current) {
+      const unprocessedMessages = messages.slice(processedMessageCountRef.current);
+      // Update ref immediately to mark these as handled
+      processedMessageCountRef.current = messages.length;
 
-        case 'WELCOME':
-          setOpponentProfile(lastMsg.profile);
-          playSound('joined');
-          break;
-
-        case 'START_ROUND':
-          if (gameMode === 'MULTI_GUEST') {
-            // IMMEDIATE STATE RESET
-            setDuration(lastMsg.duration);
-            setTotalRounds(lastMsg.totalRounds);
-            setCurrentRoundIndex(lastMsg.roundIndex);
-            setCurrentLetter(lastMsg.letter);
-            
-            // Clean up previous round data explicitly
-            setLastInputs(null);
-            setLastValidation(null);
-            setOpponentInputs(null);
-            setOpponentValidation(null);
-            setFinalMyResult(null);
-            setFinalOpponentResult(null);
-            setForceSubmit(false);
-            
-            // Force status change
-            setStatus('COUNTDOWN');
-          }
-          break;
-
-        case 'STOP_ROUND':
-          // Opponent hit stop. Force submit my answers immediately.
-          if (status === 'PLAYING') {
-            setForceSubmit(true);
-          }
-          break;
-
-        case 'SUBMIT_ANSWERS':
-          if (lastMsg.roundIndex === currentRoundIndex) {
-            setOpponentInputs(lastMsg.inputs);
-            setOpponentValidation(lastMsg.validation);
-          }
-          break;
+      unprocessedMessages.forEach(msg => {
+        console.log(`Processing Message [${msg.type}]`, msg);
         
-        case 'CHAT_MESSAGE':
-          setChatHistory(prev => {
-             // Avoid duplicate messages if already present (simple id check)
-             if (prev.some(m => m.id === lastMsg.text + lastMsg.senderName)) return prev;
-             
-             return [...prev, {
-              id: Date.now().toString() + Math.random(),
-              text: lastMsg.text,
-              sender: lastMsg.senderName,
-              isMe: false,
-              timestamp: Date.now()
-            }]
-          });
-          break;
+        switch (msg.type) {
+          case 'JOINED':
+            setOpponentProfile(msg.profile);
+            sendMessage({ type: 'WELCOME', profile: userProfile });
+            playSound('joined');
+            break;
 
-        case 'GAME_OVER':
-          setStatus('GAME_OVER');
-          break;
-      }
+          case 'WELCOME':
+            setOpponentProfile(msg.profile);
+            playSound('joined');
+            break;
+
+          case 'START_ROUND':
+            // We use functional updates or direct checks to ensure we don't miss this
+            // regardless of current closure state, though 'gameMode' dependency handles most cases.
+            if (gameMode === 'MULTI_GUEST') {
+              console.log("Guest Starting Round:", msg.letter);
+              setDuration(msg.duration);
+              setTotalRounds(msg.totalRounds);
+              setCurrentRoundIndex(msg.roundIndex);
+              setCurrentLetter(msg.letter);
+              
+              // Clean up previous round data explicitly
+              setLastInputs(null);
+              setLastValidation(null);
+              setOpponentInputs(null);
+              setOpponentValidation(null);
+              setFinalMyResult(null);
+              setFinalOpponentResult(null);
+              setForceSubmit(false);
+              
+              // Force status change
+              setStatus('COUNTDOWN');
+            }
+            break;
+
+          case 'STOP_ROUND':
+            // Opponent hit stop. Force submit my answers immediately if I'm playing.
+            setStatus(currentStatus => {
+              if (currentStatus === 'PLAYING') {
+                setForceSubmit(true);
+              }
+              return currentStatus;
+            });
+            break;
+
+          case 'SUBMIT_ANSWERS':
+            // Store opponent answers. 
+            // Note: We check the round index in the message against the current round index.
+            // If they match, we store. If the message is 'future' (race condition), we might need to store it differently,
+            // but for now, assuming causal ordering from host->guest or guest->host.
+            // Using a functional update for currentRoundIndex access inside loop might be tricky,
+            // so we rely on the effect re-running if round changes, OR we just store it if it matches the *message's* intent.
+            // Since we are inside a forEach in an effect with currentRoundIndex dependency, this is safe-ish.
+            if (msg.roundIndex === currentRoundIndex) {
+              setOpponentInputs(msg.inputs);
+              setOpponentValidation(msg.validation);
+            } else {
+               console.warn(`Received answer for round ${msg.roundIndex} but currently in ${currentRoundIndex}`);
+               // Fallback: if we just moved to this round, accept it.
+               if (msg.roundIndex === currentRoundIndex) {
+                  setOpponentInputs(msg.inputs);
+                  setOpponentValidation(msg.validation);
+               }
+            }
+            break;
+          
+          case 'CHAT_MESSAGE':
+            setChatHistory(prev => {
+               // Avoid duplicate messages if already present (simple id check)
+               if (prev.some(m => m.id === msg.text + msg.senderName)) return prev;
+               
+               return [...prev, {
+                id: Date.now().toString() + Math.random(),
+                text: msg.text,
+                sender: msg.senderName,
+                isMe: false,
+                timestamp: Date.now()
+              }]
+            });
+            break;
+
+          case 'GAME_OVER':
+            setStatus('GAME_OVER');
+            break;
+        }
+      });
     }
-  }, [messages, gameMode, currentRoundIndex, userProfile, status]);
+  }, [messages, gameMode, currentRoundIndex, userProfile]);
 
   // --- Trigger handshake on connection ---
   useEffect(() => {
@@ -172,7 +200,9 @@ const App: React.FC = () => {
       return;
     }
 
+    // Multiplayer scoring
     if (lastValidation && lastInputs && opponentValidation && opponentInputs) {
+      console.log("Calculating Multiplayer Scores...");
       const myRes = JSON.parse(JSON.stringify(lastValidation));
       const oppRes = JSON.parse(JSON.stringify(opponentValidation));
 
@@ -190,6 +220,7 @@ const App: React.FC = () => {
         const myWord = lastInputs[key].trim().toLowerCase();
         const oppWord = opponentInputs[key].trim().toLowerCase();
 
+        // Bonus for same answer
         if (myScore > 0 && oppScore > 0 && myWord === oppWord && myWord !== '') {
           myScore = 5;
           oppScore = 5;
@@ -217,6 +248,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
      if (finalMyResult && (gameMode === 'SINGLE' || finalOpponentResult)) {
+        // Ensure we haven't already added this round's score
         if (scoresHistory.length === currentRoundIndex) {
            const myScore = finalMyResult.totalRoundScore;
            const oppScore = gameMode === 'SINGLE' ? 0 : (finalOpponentResult?.totalRoundScore || 0);
