@@ -61,7 +61,6 @@ export const useMultiplayer = () => {
     });
 
     conn.on('data', (data) => {
-      console.log('Received data:', data);
       setMessages((prev) => [...prev, data as MultiplayerMessage]);
     });
 
@@ -79,9 +78,9 @@ export const useMultiplayer = () => {
 
   const connectToPeer = (roomCode: string) => {
     if (!peerRef.current) return;
-    // Ensure we use the full ID with prefix
     const targetPeerId = `${ID_PREFIX}${roomCode}`;
-    const conn = peerRef.current.connect(targetPeerId);
+    // Using serialization: 'json' helps with cross-browser/device compatibility and lag
+    const conn = peerRef.current.connect(targetPeerId, { serialization: 'json' });
     handleConnection(conn);
   };
 

@@ -66,9 +66,24 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
+  // --- Safe Countdown Transition ---
+  // This ensures that even if message handling lags, the app auto-transitions from COUNTDOWN to PLAYING
+  useEffect(() => {
+    let timer: any;
+    if (status === 'COUNTDOWN') {
+      timer = setTimeout(() => {
+        setStatus('PLAYING');
+      }, 2000);
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [status]);
+
   // --- Multiplayer Message Handling ---
   useEffect(() => {
     if (messages.length > 0) {
+      // Process only the latest message to avoid backlog issues
       const lastMsg = messages[messages.length - 1];
       
       switch (lastMsg.type) {
@@ -85,13 +100,23 @@ const App: React.FC = () => {
 
         case 'START_ROUND':
           if (gameMode === 'MULTI_GUEST') {
+            // IMMEDIATE STATE RESET
             setDuration(lastMsg.duration);
             setTotalRounds(lastMsg.totalRounds);
             setCurrentRoundIndex(lastMsg.roundIndex);
             setCurrentLetter(lastMsg.letter);
-            startNewRoundCleanup();
+            
+            // Clean up previous round data explicitly
+            setLastInputs(null);
+            setLastValidation(null);
+            setOpponentInputs(null);
+            setOpponentValidation(null);
+            setFinalMyResult(null);
+            setFinalOpponentResult(null);
+            setForceSubmit(false);
+            
+            // Force status change
             setStatus('COUNTDOWN');
-            setTimeout(() => setStatus('PLAYING'), 2000);
           }
           break;
 
@@ -110,13 +135,18 @@ const App: React.FC = () => {
           break;
         
         case 'CHAT_MESSAGE':
-          setChatHistory(prev => [...prev, {
-            id: Date.now().toString() + Math.random(),
-            text: lastMsg.text,
-            sender: lastMsg.senderName,
-            isMe: false,
-            timestamp: Date.now()
-          }]);
+          setChatHistory(prev => {
+             // Avoid duplicate messages if already present (simple id check)
+             if (prev.some(m => m.id === lastMsg.text + lastMsg.senderName)) return prev;
+             
+             return [...prev, {
+              id: Date.now().toString() + Math.random(),
+              text: lastMsg.text,
+              sender: lastMsg.senderName,
+              isMe: false,
+              timestamp: Date.now()
+            }]
+          });
           break;
 
         case 'GAME_OVER':
@@ -268,10 +298,6 @@ const App: React.FC = () => {
         duration: duration
       });
     }
-    
-    setTimeout(() => {
-      setStatus('PLAYING');
-    }, 2000);
   };
 
   // Called when this user stops the game manually (clicks Stop button)

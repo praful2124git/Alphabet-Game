@@ -17,20 +17,46 @@ export const GameRound: React.FC<GameRoundProps> = ({ letter, duration, onSubmit
     animal: '',
     thing: ''
   });
+  
+  // We use a high refresh rate for the progress bar, but integer seconds for display
   const [timeLeft, setTimeLeft] = useState(duration);
+  const [progress, setProgress] = useState(100);
+  
+  // Store the absolute timestamp when the round should end
+  const endTimeRef = useRef<number>(Date.now() + duration * 1000);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Initialize timer based on absolute time to prevent drift/lag
   useEffect(() => {
+    // Reset inputs when letter changes (new round)
+    setInputs({ name: '', place: '', animal: '', thing: '' });
+    
+    // Calculate exact end time
+    const now = Date.now();
+    endTimeRef.current = now + duration * 1000;
+    
     setTimeLeft(duration);
+    setProgress(100);
+
+    // Update frequently for smooth UI, but calculate remaining time mathmatically
     timerRef.current = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      const currentTime = Date.now();
+      const msRemaining = endTimeRef.current - currentTime;
+      const secondsRemaining = Math.ceil(msRemaining / 1000);
+
+      if (secondsRemaining <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setTimeLeft(0);
+        setProgress(0);
+        // Trigger submit in the effect below
+      } else {
+        setTimeLeft(secondsRemaining);
+        // Calculate smooth progress bar
+        const totalMs = duration * 1000;
+        const currentProgress = (msRemaining / totalMs) * 100;
+        setProgress(currentProgress);
+      }
+    }, 100); // Update every 100ms for smoothness
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -48,7 +74,7 @@ export const GameRound: React.FC<GameRoundProps> = ({ letter, duration, onSubmit
 
   // Auto-submit when time hits 0
   useEffect(() => {
-    if (timeLeft === 0) {
+    if (timeLeft === 0 && !forceSubmit) {
       onSubmit(inputs);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -64,7 +90,6 @@ export const GameRound: React.FC<GameRoundProps> = ({ letter, duration, onSubmit
     setInputs(prev => ({ ...prev, [field]: value }));
   };
 
-  const progressPercentage = (timeLeft / duration) * 100;
   let timerColor = 'bg-green-500';
   if (timeLeft < duration * 0.3) timerColor = 'bg-red-500';
   else if (timeLeft < duration * 0.5) timerColor = 'bg-orange-500';
@@ -86,8 +111,8 @@ export const GameRound: React.FC<GameRoundProps> = ({ letter, duration, onSubmit
           <div className="text-2xl font-mono font-bold text-stone-700 dark:text-stone-300 mb-1">{timeLeft}s</div>
           <div className="w-full bg-stone-200 dark:bg-stone-700 rounded-full h-2.5 overflow-hidden">
             <div 
-              className={`h-2.5 rounded-full transition-all duration-1000 linear ${timerColor}`} 
-              style={{ width: `${progressPercentage}%` }}
+              className={`h-2.5 rounded-full transition-all duration-200 linear ${timerColor}`} 
+              style={{ width: `${Math.max(0, progress)}%` }}
             ></div>
           </div>
         </div>
