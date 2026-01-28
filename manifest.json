@@ -1,0 +1,22 @@
+
+{
+  "name": "Name Place Animal Thing",
+  "short_name": "NPAT Game",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fafaf9",
+  "theme_color": "#ea580c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/6R22q8Q/Name-Place-Animal-Thing-Logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "https://i.ibb.co/6R22q8Q/Name-Place-Animal-Thing-Logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}

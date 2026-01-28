@@ -17,7 +17,7 @@ interface StartScreenProps {
 const AVATARS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🦄', '🐙', '🦋', '🤖', '👽', '👻'];
 
 // The user's custom logo URL
-const LOGO_URL = "LogoAlphabet.png";
+const LOGO_URL = "components/LogoAlphabet.png";
 
 // Fallback SVG that mimics the user's custom logo design (4 colored quadrants)
 const GameLogo = ({ className }: { className?: string }) => (
@@ -82,6 +82,17 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   const [tempName, setTempName] = useState('');
   const [tempAvatar, setTempAvatar] = useState(AVATARS[0]);
   const [logoError, setLogoError] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    // Listen for PWA install prompt
+    const handler = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
 
   useEffect(() => {
     if (mode === 'MULTI' && !myPeerId && step === 'MENU') {
@@ -107,6 +118,14 @@ export const StartScreen: React.FC<StartScreenProps> = ({
     if (!tempName.trim()) return;
     setUserProfile({ name: tempName.trim(), avatar: tempAvatar });
     setStep('MENU');
+  };
+
+  const handleInstallClick = () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    installPrompt.userChoice.then((choiceResult: any) => {
+      setInstallPrompt(null);
+    });
   };
 
   const LogoComponent = () => (
@@ -378,6 +397,15 @@ export const StartScreen: React.FC<StartScreenProps> = ({
                     </button>
                   )}
                </div>
+             )}
+             
+             {installPrompt && (
+                <button 
+                  onClick={handleInstallClick}
+                  className="w-full mt-4 py-3 bg-gradient-to-r from-stone-800 to-stone-700 dark:from-stone-700 dark:to-stone-600 text-white font-bold rounded-2xl shadow-lg border border-stone-600 flex items-center justify-center gap-2"
+                >
+                  <span>📲</span> Install App
+                </button>
              )}
           </div>
         )}

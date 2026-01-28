@@ -1,9 +1,19 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Name Place Animal Thing</title>
+    
+    <!-- PWA Settings -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#ea580c" />
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="NPAT Game">
+    <link rel="apple-touch-icon" href="https://i.ibb.co/6R22q8Q/Name-Place-Animal-Thing-Logo.jpg">
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -32,6 +42,8 @@
     <style>
       body {
         font-family: 'Fredoka', sans-serif;
+        /* Prevent pull-to-refresh on mobile to feel more native */
+        overscroll-behavior-y: none;
       }
       /* Custom scrollbar for webkit */
       ::-webkit-scrollbar {
@@ -70,8 +82,17 @@
 }
 </script>
 </head>
-  <body class="bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 h-screen overflow-hidden transition-colors duration-300">
+  <body class="bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100 h-screen overflow-hidden transition-colors duration-300 select-none">
     <div id="root" class="h-full w-full"></div>
     <script type="module" src="/index.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(reg => console.log('SW registered'))
+            .catch(err => console.log('SW failed', err));
+        });
+      }
+    </script>
   </body>
 </html>
