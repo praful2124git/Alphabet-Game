@@ -3,8 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { PlayerProfile } from '../types';
 
 interface StartScreenProps {
-  onStartSingle: (duration: number) => void;
-  onHostGame: (duration: number) => void;
+  onStartSingle: (duration: number, rounds: number) => void;
+  onHostGame: (duration: number, rounds: number) => void;
   onJoinGame: (roomId: string) => void;
   myPeerId: string;
   isMultiplayerConnected: boolean;
@@ -15,6 +15,51 @@ interface StartScreenProps {
 }
 
 const AVATARS = ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🦄', '🐙', '🦋', '🤖', '👽', '👻'];
+
+// The user's custom logo URL
+const LOGO_URL = "LogoAlphabet.png";
+
+// Fallback SVG that mimics the user's custom logo design (4 colored quadrants)
+const GameLogo = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 200 200" className={`${className} rounded-full shadow-2xl border-4 border-white dark:border-stone-700 bg-stone-100`} xmlns="http://www.w3.org/2000/svg">
+    {/* Top Left - Red - Name/Brain */}
+    <path d="M100,100 L0,100 A100,100 0 0,1 100,0 Z" fill="#9f1239" />
+    <text x="50" y="70" fontSize="50" textAnchor="middle" dominantBaseline="middle">🧠</text>
+
+    {/* Top Right - Yellow/Gold - Place */}
+    <path d="M100,100 L100,0 A100,100 0 0,1 200,100 Z" fill="#ca8a04" />
+    <text x="150" y="70" fontSize="50" textAnchor="middle" dominantBaseline="middle">🌍</text>
+
+    {/* Bottom Left - Green - Animal */}
+    <path d="M100,100 L100,200 A100,100 0 0,1 0,100 Z" fill="#15803d" />
+    <text x="50" y="170" fontSize="50" textAnchor="middle" dominantBaseline="middle">🦁</text>
+
+    {/* Bottom Right - Orange - Thing/Note */}
+    <path d="M100,100 L200,100 A100,100 0 0,1 100,200 Z" fill="#c2410c" />
+    <text x="150" y="170" fontSize="50" textAnchor="middle" dominantBaseline="middle">📝</text>
+
+    {/* Dividers */}
+    <line x1="100" y1="0" x2="100" y2="200" stroke="#f5f5f4" strokeWidth="3" />
+    <line x1="0" y1="100" x2="200" y2="100" stroke="#f5f5f4" strokeWidth="3" />
+
+    {/* Outer Ring */}
+    <circle cx="100" cy="100" r="98" fill="none" stroke="#78350f" strokeWidth="4" opacity="0.3" />
+
+    {/* Center Badge */}
+    <g filter="url(#shadow)">
+       <rect x="65" y="65" width="70" height="70" rx="15" fill="#f5f5f4" stroke="#d6d3d1" strokeWidth="1" />
+       <text x="100" y="102" fontSize="50" fontWeight="900" fill="#ea580c" textAnchor="middle" dominantBaseline="middle" fontFamily="sans-serif">A</text>
+    </g>
+    
+    <defs>
+      <filter id="shadow" x="0" y="0" width="200%" height="200%">
+        <feOffset result="offOut" in="SourceAlpha" dx="1" dy="2" />
+        <feGaussianBlur result="blurOut" in="offOut" stdDeviation="2" />
+        <feBlend in="SourceGraphic" in2="blurOut" mode="normal" />
+      </filter>
+    </defs>
+  </svg>
+);
 
 export const StartScreen: React.FC<StartScreenProps> = ({ 
   onStartSingle, 
@@ -31,10 +76,12 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   const [mode, setMode] = useState<'SINGLE' | 'MULTI'>('SINGLE');
   const [multiMode, setMultiMode] = useState<'HOST' | 'JOIN'>('HOST');
   const [duration, setDuration] = useState(60);
+  const [rounds, setRounds] = useState(5);
   const [joinId, setJoinId] = useState('');
   const [copied, setCopied] = useState(false);
   const [tempName, setTempName] = useState('');
   const [tempAvatar, setTempAvatar] = useState(AVATARS[0]);
+  const [logoError, setLogoError] = useState(false);
 
   useEffect(() => {
     if (mode === 'MULTI' && !myPeerId && step === 'MENU') {
@@ -62,10 +109,26 @@ export const StartScreen: React.FC<StartScreenProps> = ({
     setStep('MENU');
   };
 
+  const LogoComponent = () => (
+    <>
+      {!logoError ? (
+        <img 
+          src={LOGO_URL} 
+          alt="Name Place Animal Thing" 
+          onError={() => setLogoError(true)}
+          className="w-32 h-32 md:w-40 md:h-40 rounded-full shadow-2xl mb-4 border-4 border-white dark:border-stone-700 object-cover hover:scale-105 transition-transform duration-500"
+        />
+      ) : (
+        <GameLogo className="w-32 h-32 md:w-40 md:h-40 mb-4 hover:scale-105 transition-transform duration-500" />
+      )}
+    </>
+  );
+
   if (step === 'PROFILE') {
     return (
       <div className="flex flex-col items-center justify-center h-full p-4 text-center animate-pop-in">
-         <div className="mb-6">
+         <div className="mb-6 flex flex-col items-center">
+          <LogoComponent />
           <h1 className="text-4xl font-black text-orange-600 dark:text-orange-500 mb-2">Who are you?</h1>
           <p className="text-stone-500 dark:text-stone-400">Create your profile to start playing.</p>
         </div>
@@ -112,8 +175,9 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
   return (
     <div className="flex flex-col items-center justify-center h-full p-4 text-center animate-pop-in overflow-y-auto">
-      <div className="mb-4 mt-2">
-        <h1 className="text-5xl font-black text-stone-800 dark:text-stone-100 mb-2 drop-shadow-sm tracking-tight leading-tight">
+      <div className="mb-4 mt-2 flex flex-col items-center">
+        <LogoComponent />
+        <h1 className="text-4xl md:text-5xl font-black text-stone-800 dark:text-stone-100 mb-2 drop-shadow-sm tracking-tight leading-tight hidden md:block">
           Name Place <br/> <span className="text-orange-500">Animal Thing</span>
         </h1>
         <div className="flex items-center justify-center gap-2 mt-2 bg-white/50 dark:bg-stone-800/50 py-1 px-3 rounded-full inline-flex border border-stone-100 dark:border-stone-700">
@@ -143,24 +207,42 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
         {mode === 'SINGLE' && (
           <div className="space-y-6 animate-pop-in">
-             <div className="text-left">
-               <label className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2 block">Timer Duration</label>
-               <div className="flex items-center gap-4">
-                 <input 
-                    type="range" 
-                    min="30" 
-                    max="180" 
-                    step="10"
-                    value={duration} 
-                    onChange={(e) => setDuration(Number(e.target.value))}
-                    className="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-orange-600"
-                 />
-                 <span className="text-xl font-bold text-orange-600 dark:text-orange-500 w-16 text-right">{duration}s</span>
+             <div className="text-left space-y-4">
+               <div>
+                 <label className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2 block">Number of Rounds</label>
+                 <div className="flex items-center gap-4">
+                   <input 
+                      type="range" 
+                      min="3" 
+                      max="10" 
+                      step="1"
+                      value={rounds} 
+                      onChange={(e) => setRounds(Number(e.target.value))}
+                      className="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-orange-600"
+                   />
+                   <span className="text-xl font-bold text-orange-600 dark:text-orange-500 w-16 text-right">{rounds}</span>
+                 </div>
+               </div>
+               
+               <div>
+                 <label className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2 block">Timer Duration</label>
+                 <div className="flex items-center gap-4">
+                   <input 
+                      type="range" 
+                      min="30" 
+                      max="180" 
+                      step="10"
+                      value={duration} 
+                      onChange={(e) => setDuration(Number(e.target.value))}
+                      className="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-orange-600"
+                   />
+                   <span className="text-xl font-bold text-orange-600 dark:text-orange-500 w-16 text-right">{duration}s</span>
+                 </div>
                </div>
              </div>
 
              <button
-              onClick={() => onStartSingle(duration)}
+              onClick={() => onStartSingle(duration, rounds)}
               className="w-full bg-orange-600 hover:bg-orange-700 text-white text-xl font-bold py-4 px-8 rounded-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg shadow-orange-200 dark:shadow-none"
             >
               Start Game
@@ -187,19 +269,37 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
              {multiMode === 'HOST' && (
                <div className="space-y-4">
-                  <div className="text-left">
-                    <label className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2 block">Timer Duration</label>
-                    <div className="flex items-center gap-4">
-                      <input 
-                          type="range" 
-                          min="30" 
-                          max="180" 
-                          step="10"
-                          value={duration} 
-                          onChange={(e) => setDuration(Number(e.target.value))}
-                          className="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-orange-600"
-                      />
-                      <span className="text-xl font-bold text-orange-600 dark:text-orange-500 w-16 text-right">{duration}s</span>
+                  <div className="text-left space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2 block">Number of Rounds</label>
+                      <div className="flex items-center gap-4">
+                        <input 
+                            type="range" 
+                            min="3" 
+                            max="10" 
+                            step="1"
+                            value={rounds} 
+                            onChange={(e) => setRounds(Number(e.target.value))}
+                            className="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-orange-600"
+                        />
+                        <span className="text-xl font-bold text-orange-600 dark:text-orange-500 w-16 text-right">{rounds}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-2 block">Timer Duration</label>
+                      <div className="flex items-center gap-4">
+                        <input 
+                            type="range" 
+                            min="30" 
+                            max="180" 
+                            step="10"
+                            value={duration} 
+                            onChange={(e) => setDuration(Number(e.target.value))}
+                            className="w-full h-2 bg-stone-200 dark:bg-stone-700 rounded-lg appearance-none cursor-pointer accent-orange-600"
+                        />
+                        <span className="text-xl font-bold text-orange-600 dark:text-orange-500 w-16 text-right">{duration}s</span>
+                      </div>
                     </div>
                   </div>
 
@@ -237,7 +337,7 @@ export const StartScreen: React.FC<StartScreenProps> = ({
 
                   {isMultiplayerConnected && opponentProfile && (
                      <button
-                       onClick={() => onHostGame(duration)}
+                       onClick={() => onHostGame(duration, rounds)}
                        className="w-full bg-green-600 hover:bg-green-700 text-white text-lg font-bold py-3 px-8 rounded-2xl animate-pulse shadow-lg shadow-green-200 dark:shadow-none"
                      >
                        Start Game

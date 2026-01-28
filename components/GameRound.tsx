@@ -149,15 +149,15 @@ interface InputFieldProps {
 }
 
 const InputField: React.FC<InputFieldProps> = ({ label, icon, value, onChange, placeholder, autoFocus }) => (
-  <div className="bg-white dark:bg-stone-800 p-6 rounded-2xl shadow-sm border-2 border-stone-100 dark:border-stone-700 focus-within:border-orange-400 dark:focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-50 dark:focus-within:ring-orange-900/20 transition-all group">
-    <label className="block text-stone-500 dark:text-stone-400 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+  <div className="bg-matte-card p-6 rounded-2xl shadow-sm border-2 border-transparent focus-within:border-orange-500 transition-all group">
+    <label className="block text-stone-300 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
       <span className="text-lg">{icon}</span> {label}
     </label>
     <input
       type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full text-2xl font-bold text-stone-800 dark:text-stone-100 placeholder-stone-300 dark:placeholder-stone-600 outline-none bg-transparent"
+      className="w-full text-2xl font-bold text-white placeholder-stone-500 outline-none bg-transparent"
       placeholder={placeholder}
       autoComplete="off"
       autoFocus={autoFocus}

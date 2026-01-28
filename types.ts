@@ -39,6 +39,14 @@ export interface RoundHistory {
   result: ValidationResult;
 }
 
+export interface ChatMessage {
+  id: string;
+  text: string;
+  sender: string;
+  isMe: boolean;
+  timestamp: number;
+}
+
 export enum Category {
   NAME = 'Name',
   PLACE = 'Place',
@@ -53,5 +61,6 @@ export type MultiplayerMessage =
   | { type: 'START_ROUND'; letter: string; roundIndex: number; totalRounds: number; duration: number }
   | { type: 'STOP_ROUND' }
   | { type: 'SUBMIT_ANSWERS'; inputs: GameInputs; validation: ValidationResult; roundIndex: number }
+  | { type: 'CHAT_MESSAGE'; text: string; senderName: string }
   | { type: 'PLAY_AGAIN' }
   | { type: 'GAME_OVER' };
