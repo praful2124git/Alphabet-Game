@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Peer, { DataConnection } from 'peerjs';
 import { MultiplayerMessage } from '../types';
@@ -69,6 +70,11 @@ export const useMultiplayer = () => {
       setIsConnected(false);
       setConnection(null);
     });
+
+    conn.on('error', (err) => {
+      console.error('Connection error:', err);
+      setIsConnected(false);
+    });
   };
 
   const connectToPeer = (roomCode: string) => {
@@ -80,8 +86,14 @@ export const useMultiplayer = () => {
   };
 
   const sendMessage = (msg: MultiplayerMessage) => {
-    if (connection) {
-      connection.send(msg);
+    if (connection && isConnected) {
+      try {
+        connection.send(msg);
+      } catch (e) {
+        console.error("Failed to send message", e);
+      }
+    } else {
+      console.warn("Attempted to send message while disconnected");
     }
   };
 

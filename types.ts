@@ -1,9 +1,15 @@
+
 export type GameStatus = 'MENU' | 'COUNTDOWN' | 'PLAYING' | 'VALIDATING' | 'ROUND_RESULT' | 'GAME_OVER';
 
 export type GameMode = 'SINGLE' | 'MULTI_HOST' | 'MULTI_GUEST';
 
 export interface GameConfig {
   duration: number; // seconds
+}
+
+export interface PlayerProfile {
+  name: string;
+  avatar: string; // Emoji character
 }
 
 export interface GameInputs {
@@ -42,7 +48,8 @@ export enum Category {
 
 // Multiplayer Messages
 export type MultiplayerMessage = 
-  | { type: 'JOINED'; name: string }
+  | { type: 'JOINED'; profile: PlayerProfile }
+  | { type: 'WELCOME'; profile: PlayerProfile }
   | { type: 'START_ROUND'; letter: string; roundIndex: number; totalRounds: number; duration: number }
   | { type: 'SUBMIT_ANSWERS'; inputs: GameInputs; validation: ValidationResult; roundIndex: number }
   | { type: 'PLAY_AGAIN' }

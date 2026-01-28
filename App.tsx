@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { StartScreen } from './components/StartScreen';
 import { GameRound } from './components/GameRound';
 import { RoundResult } from './components/RoundResult';
 import { LoadingScreen } from './components/LoadingScreen';
 import { validateAnswers } from './services/geminiService';
-import { GameStatus, GameInputs, ValidationResult, GameMode } from './types';
+import { GameStatus, GameInputs, ValidationResult, GameMode, PlayerProfile } from './types';
 import { useMultiplayer } from './hooks/useMultiplayer';
 
 // prettier-ignore
@@ -17,6 +18,10 @@ const App: React.FC = () => {
   const [gameMode, setGameMode] = useState<GameMode>('SINGLE');
   const [duration, setDuration] = useState(60);
   
+  // User Identity
+  const [userProfile, setUserProfile] = useState<PlayerProfile>({ name: 'Player', avatar: '🐶' });
+  const [opponentProfile, setOpponentProfile] = useState<PlayerProfile | null>(null);
+
   const [currentRoundIndex, setCurrentRoundIndex] = useState(0);
   const [currentLetter, setCurrentLetter] = useState('');
   
@@ -51,6 +56,22 @@ const App: React.FC = () => {
       const lastMsg = messages[messages.length - 1];
       
       switch (lastMsg.type) {
+        case 'JOINED':
+          // Host received a join request
+          if (gameMode === 'MULTI_HOST') {
+            setOpponentProfile(lastMsg.profile);
+            // Send Welcome back so guest knows who host is
+            sendMessage({ type: 'WELCOME', profile: userProfile });
+          }
+          break;
+
+        case 'WELCOME':
+          // Guest received welcome from host
+          if (gameMode === 'MULTI_GUEST') {
+            setOpponentProfile(lastMsg.profile);
+          }
+          break;
+
         case 'START_ROUND':
           if (gameMode === 'MULTI_GUEST') {
             setDuration(lastMsg.duration);
@@ -73,7 +94,15 @@ const App: React.FC = () => {
           break;
       }
     }
-  }, [messages, gameMode, currentRoundIndex]);
+  }, [messages, gameMode, currentRoundIndex, userProfile]);
+
+  // --- Trigger handshake on connection ---
+  useEffect(() => {
+    if (isConnected && gameMode === 'MULTI_GUEST') {
+      // Send my profile to host immediately upon connection
+      sendMessage({ type: 'JOINED', profile: userProfile });
+    }
+  }, [isConnected, gameMode]); // Removing userProfile from dep array to avoid loops, assumes profile set before connect
 
   // --- Score Calculation & Collision Logic ---
   useEffect(() => {
@@ -154,6 +183,7 @@ const App: React.FC = () => {
   };
 
   const startHostGame = (selectedDuration: number) => {
+    if (!isConnected || !opponentProfile) return; // Prevent crash if no one joined
     setGameMode('MULTI_HOST');
     setDuration(selectedDuration);
     resetGame();
@@ -184,8 +214,11 @@ const App: React.FC = () => {
 
   const startRound = () => {
     let letter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-    while (roundLetters.includes(letter) && roundLetters.length < ALPHABET.length) {
+    // Simple retry to avoid duplicates, but not infinite loop if alphabet exhausted (though 5 rounds < 20 letters)
+    let attempts = 0;
+    while (roundLetters.includes(letter) && attempts < 50) {
        letter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+       attempts++;
     }
     
     setRoundLetters(prev => [...prev, letter]);
@@ -244,18 +277,25 @@ const App: React.FC = () => {
       {/* Top Bar for Global State */}
       {status !== 'MENU' && (
         <div className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shadow-sm z-10">
-           <div className="font-bold text-slate-600 text-xs md:text-base">
-             Round <span className="text-indigo-600">{currentRoundIndex + 1}</span> / {TOTAL_ROUNDS}
-             {gameMode !== 'SINGLE' && <span className="ml-2 px-2 py-0.5 bg-slate-100 rounded text-slate-400 font-normal">{gameMode === 'MULTI_HOST' ? 'HOST' : 'GUEST'}</span>}
+           <div className="font-bold text-slate-600 text-xs md:text-base flex items-center gap-2">
+             <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md">Round {currentRoundIndex + 1} / {TOTAL_ROUNDS}</span>
            </div>
            
-           <div className="flex gap-4">
-             <div className="font-black text-slate-800 text-lg">
-               You: <span className="text-green-600">{currentTotalMyScore}</span>
+           <div className="flex gap-4 md:gap-8">
+             <div className="flex items-center gap-2">
+               <span className="text-xl">{userProfile.avatar}</span>
+               <div className="flex flex-col items-end">
+                 <span className="text-xs font-bold text-slate-400 uppercase">You</span>
+                 <span className="font-black text-slate-800 text-lg leading-none">{currentTotalMyScore}</span>
+               </div>
              </div>
-             {gameMode !== 'SINGLE' && (
-               <div className="font-black text-slate-800 text-lg">
-                 Opp: <span className="text-pink-600">{currentTotalOppScore}</span>
+             {gameMode !== 'SINGLE' && opponentProfile && (
+               <div className="flex items-center gap-2">
+                 <div className="flex flex-col items-start">
+                   <span className="text-xs font-bold text-slate-400 uppercase">{opponentProfile.name}</span>
+                   <span className="font-black text-slate-800 text-lg leading-none">{currentTotalOppScore}</span>
+                 </div>
+                 <span className="text-xl">{opponentProfile.avatar}</span>
                </div>
              )}
            </div>
@@ -272,6 +312,9 @@ const App: React.FC = () => {
             myPeerId={peerId}
             isMultiplayerConnected={isConnected}
             onInitMultiplayer={initializePeer}
+            userProfile={userProfile}
+            setUserProfile={setUserProfile}
+            opponentProfile={opponentProfile}
           />
         )}
 
@@ -307,8 +350,8 @@ const App: React.FC = () => {
                 />
              ) : (
                <div className="flex flex-col items-center justify-center h-full animate-pop-in">
-                  <div className="text-6xl mb-4">⏳</div>
-                  <h2 className="text-2xl font-bold text-slate-700">Waiting for opponent...</h2>
+                  <div className="text-6xl mb-4 animate-bounce">{opponentProfile?.avatar || '👤'}</div>
+                  <h2 className="text-2xl font-bold text-slate-700">Waiting for {opponentProfile?.name || 'Opponent'}...</h2>
                   <p className="text-slate-500 mt-2">The scores will be revealed once both players submit.</p>
                </div>
              )}
@@ -320,17 +363,19 @@ const App: React.FC = () => {
              <div className="text-6xl mb-6">🏆</div>
              <h1 className="text-4xl font-black text-slate-800 mb-2">Game Over!</h1>
              
-             <div className="flex gap-8 justify-center mt-4">
-               <div>
-                  <p className="text-slate-500 text-xl mb-2">Your Score</p>
-                  <div className="text-6xl font-black text-indigo-600 drop-shadow-lg">
+             <div className="flex gap-8 justify-center mt-8">
+               <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-100 min-w-[140px]">
+                  <div className="text-4xl mb-2">{userProfile.avatar}</div>
+                  <p className="text-slate-500 text-sm font-bold uppercase mb-1">You</p>
+                  <div className="text-5xl font-black text-indigo-600">
                     {currentTotalMyScore}
                   </div>
                </div>
-               {gameMode !== 'SINGLE' && (
-                 <div>
-                    <p className="text-slate-500 text-xl mb-2">Opponent</p>
-                    <div className="text-6xl font-black text-pink-500 drop-shadow-lg">
+               {gameMode !== 'SINGLE' && opponentProfile && (
+                 <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-100 min-w-[140px]">
+                    <div className="text-4xl mb-2">{opponentProfile.avatar}</div>
+                    <p className="text-slate-500 text-sm font-bold uppercase mb-1">{opponentProfile.name}</p>
+                    <div className="text-5xl font-black text-pink-500">
                       {currentTotalOppScore}
                     </div>
                  </div>
@@ -338,11 +383,11 @@ const App: React.FC = () => {
              </div>
 
              {gameMode !== 'SINGLE' && (
-                <div className="mt-8 text-2xl font-bold">
+                <div className="mt-8 text-3xl font-black">
                   {currentTotalMyScore > currentTotalOppScore ? (
-                    <span className="text-green-500">You Won! 🎉</span>
+                    <span className="text-green-500 drop-shadow-sm">You Won! 🎉</span>
                   ) : currentTotalMyScore < currentTotalOppScore ? (
-                    <span className="text-red-500">You Lost 😔</span>
+                    <span className="text-red-500 drop-shadow-sm">You Lost 😔</span>
                   ) : (
                     <span className="text-slate-500">It's a Tie! 🤝</span>
                   )}
@@ -350,7 +395,12 @@ const App: React.FC = () => {
              )}
 
              <button
-              onClick={() => setStatus('MENU')}
+              onClick={() => {
+                setOpponentProfile(null);
+                setOpponentInputs(null);
+                setOpponentValidation(null);
+                setStatus('MENU');
+              }}
               className="mt-12 bg-slate-800 hover:bg-slate-900 text-white text-xl font-bold py-4 px-10 rounded-full shadow-lg transition-transform hover:scale-105"
              >
                Main Menu
