@@ -472,6 +472,8 @@ const App: React.FC = () => {
                   <RoundResult 
                     inputs={lastInputs} 
                     validation={finalMyResult!} 
+                    opponentInputs={opponentInputs}
+                    opponentValidation={finalOpponentResult}
                     onNextRound={handleNext} 
                     isLastRound={currentRoundIndex === totalRounds - 1}
                     isMultiplayer={gameMode !== 'SINGLE'}

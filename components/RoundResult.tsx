@@ -6,6 +6,10 @@ import { playSound } from '../utils/sound';
 interface RoundResultProps {
   inputs: GameInputs;
   validation: ValidationResult;
+  // New comparative props
+  opponentInputs?: GameInputs | null;
+  opponentValidation?: ValidationResult | null;
+  
   onNextRound: () => void;
   isLastRound: boolean;
   isMultiplayer: boolean;
@@ -18,6 +22,8 @@ interface RoundResultProps {
 export const RoundResult: React.FC<RoundResultProps> = ({ 
   inputs, 
   validation, 
+  opponentInputs,
+  opponentValidation,
   onNextRound, 
   isLastRound,
   isMultiplayer,
@@ -87,38 +93,79 @@ export const RoundResult: React.FC<RoundResultProps> = ({
         </div>
 
         <div className="grid grid-cols-1 gap-3 overflow-y-auto pr-2 pb-2">
-          <ResultCard 
-            category={Category.NAME} 
-            input={inputs.name} 
-            valid={validation.name.valid} 
-            message={validation.name.message} 
-            score={validation.name.score}
-            icon="👤"
-          />
-          <ResultCard 
-            category={Category.PLACE} 
-            input={inputs.place} 
-            valid={validation.place.valid} 
-            message={validation.place.message} 
-            score={validation.place.score}
-            icon="🌍"
-          />
-          <ResultCard 
-            category={Category.ANIMAL} 
-            input={inputs.animal} 
-            valid={validation.animal.valid} 
-            message={validation.animal.message} 
-            score={validation.animal.score}
-            icon="🦁"
-          />
-          <ResultCard 
-            category={Category.THING} 
-            input={inputs.thing} 
-            valid={validation.thing.valid} 
-            message={validation.thing.message} 
-            score={validation.thing.score}
-            icon="📦"
-          />
+          {isMultiplayer && opponentInputs && opponentValidation ? (
+            // Multiplayer Comparative View
+            <>
+              <ComparativeResultCard 
+                category={Category.NAME} 
+                icon="👤"
+                myInput={inputs.name}
+                myValidation={validation.name}
+                oppInput={opponentInputs.name}
+                oppValidation={opponentValidation.name}
+              />
+              <ComparativeResultCard 
+                category={Category.PLACE} 
+                icon="🌍"
+                myInput={inputs.place}
+                myValidation={validation.place}
+                oppInput={opponentInputs.place}
+                oppValidation={opponentValidation.place}
+              />
+              <ComparativeResultCard 
+                category={Category.ANIMAL} 
+                icon="🦁"
+                myInput={inputs.animal}
+                myValidation={validation.animal}
+                oppInput={opponentInputs.animal}
+                oppValidation={opponentValidation.animal}
+              />
+              <ComparativeResultCard 
+                category={Category.THING} 
+                icon="📦"
+                myInput={inputs.thing}
+                myValidation={validation.thing}
+                oppInput={opponentInputs.thing}
+                oppValidation={opponentValidation.thing}
+              />
+            </>
+          ) : (
+            // Single Player View
+            <>
+              <ResultCard 
+                category={Category.NAME} 
+                input={inputs.name} 
+                valid={validation.name.valid} 
+                message={validation.name.message} 
+                score={validation.name.score}
+                icon="👤"
+              />
+              <ResultCard 
+                category={Category.PLACE} 
+                input={inputs.place} 
+                valid={validation.place.valid} 
+                message={validation.place.message} 
+                score={validation.place.score}
+                icon="🌍"
+              />
+              <ResultCard 
+                category={Category.ANIMAL} 
+                input={inputs.animal} 
+                valid={validation.animal.valid} 
+                message={validation.animal.message} 
+                score={validation.animal.score}
+                icon="🦁"
+              />
+              <ResultCard 
+                category={Category.THING} 
+                input={inputs.thing} 
+                valid={validation.thing.valid} 
+                message={validation.thing.message} 
+                score={validation.thing.score}
+                icon="📦"
+              />
+            </>
+          )}
         </div>
 
         {/* Navigation Button Area - visible on mobile below results */}
@@ -250,6 +297,62 @@ const ResultCard: React.FC<{
           +{score}
         </span>
         <span className="text-[10px] text-stone-600 dark:text-stone-400 font-bold uppercase">Points</span>
+      </div>
+    </div>
+  );
+};
+
+// New Component for Side-by-Side Comparison
+const ComparativeResultCard: React.FC<{
+  category: string,
+  icon: string,
+  myInput: string,
+  myValidation: { valid: boolean; score: number; message: string },
+  oppInput: string,
+  oppValidation: { valid: boolean; score: number; message: string }
+}> = ({ category, icon, myInput, myValidation, oppInput, oppValidation }) => {
+  return (
+    <div className="bg-matte-card rounded-xl p-3 shadow-sm border border-stone-200 dark:border-stone-700/50">
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-3 opacity-80">
+        <span className="text-xl">{icon}</span>
+        <span className="text-xs font-bold uppercase tracking-wider text-stone-600 dark:text-stone-300">{category}</span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* My Column */}
+        <div className="bg-white/50 dark:bg-black/10 rounded-lg p-2 flex flex-col h-full border border-stone-100 dark:border-stone-700">
+           <div className="flex justify-between items-start mb-1">
+             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">You</span>
+             <span className={`text-xs font-black ${myValidation.score > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                +{myValidation.score}
+             </span>
+           </div>
+           <div className="font-bold text-stone-800 dark:text-stone-100 break-words leading-tight mb-1">
+              {myInput || <span className="text-stone-400 italic font-normal text-sm">Empty</span>}
+           </div>
+           <div className="mt-auto pt-1 flex items-center gap-1 text-[10px] text-stone-500 dark:text-stone-400 leading-tight">
+              <span>{myValidation.valid ? '✅' : '❌'}</span>
+              <span>{myValidation.message}</span>
+           </div>
+        </div>
+
+        {/* Opponent Column */}
+        <div className="bg-white/50 dark:bg-black/10 rounded-lg p-2 flex flex-col h-full border border-stone-100 dark:border-stone-700">
+           <div className="flex justify-between items-start mb-1">
+             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Opponent</span>
+             <span className={`text-xs font-black ${oppValidation.score > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                +{oppValidation.score}
+             </span>
+           </div>
+           <div className="font-bold text-stone-800 dark:text-stone-100 break-words leading-tight mb-1">
+              {oppInput || <span className="text-stone-400 italic font-normal text-sm">Empty</span>}
+           </div>
+           <div className="mt-auto pt-1 flex items-center gap-1 text-[10px] text-stone-500 dark:text-stone-400 leading-tight">
+              <span>{oppValidation.valid ? '✅' : '❌'}</span>
+              <span>{oppValidation.message}</span>
+           </div>
+        </div>
       </div>
     </div>
   );
