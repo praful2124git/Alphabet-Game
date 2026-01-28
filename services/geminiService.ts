@@ -1,12 +1,29 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { GameInputs, ValidationResult } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// We do not initialize 'ai' here to prevent the app from crashing on load 
+// if the API Key is missing. We initialize it inside the function.
 
 export const validateAnswers = async (
   letter: string,
   inputs: GameInputs
 ): Promise<ValidationResult> => {
+  const apiKey = process.env.API_KEY;
+
+  // Graceful fallback if key is missing
+  if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+    console.error("API Key is missing. Please set API_KEY in your environment variables.");
+    return {
+      name: { valid: false, score: 0, message: "API Key Missing" },
+      place: { valid: false, score: 0, message: "Contact Host" },
+      animal: { valid: false, score: 0, message: "To Fix" },
+      thing: { valid: false, score: 0, message: "Deployment" },
+      totalRoundScore: 0
+    };
+  }
+
+  const ai = new GoogleGenAI({ apiKey: apiKey });
+
   const prompt = `
     You are the judge of a "Name Place Animal Thing" game.
     The current letter is "${letter}".
@@ -97,7 +114,7 @@ export const validateAnswers = async (
 
   } catch (error) {
     console.error("Gemini Validation Error:", error);
-    // Fallback in case of error (e.g., API issues) - marking all as 0 to be safe, or could retry
+    // Fallback in case of error (e.g., API issues)
     return {
       name: { valid: false, score: 0, message: "Error validating" },
       place: { valid: false, score: 0, message: "Error validating" },
