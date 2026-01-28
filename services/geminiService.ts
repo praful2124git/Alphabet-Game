@@ -2,8 +2,39 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { GameInputs, ValidationResult } from "../types";
 
-// We do not initialize 'ai' here to prevent the app from crashing on load 
-// if the API Key is missing. We initialize it inside the function.
+// Helper for local validation when AI is unavailable or quota is exceeded
+const localValidate = (letter: string, inputs: GameInputs, reason: string): ValidationResult => {
+  const validateItem = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return { valid: false, score: 0, message: "Empty" };
+    }
+    // Check if starts with correct letter
+    if (trimmed.charAt(0).toLowerCase() !== letter.toLowerCase()) {
+      return { valid: false, score: 0, message: "Wrong Letter" };
+    }
+    // Basic length check
+    if (trimmed.length < 2) {
+       return { valid: false, score: 0, message: "Too Short" };
+    }
+    // If we are here, it starts with the letter. 
+    // Since we can't semantically verify without AI, we give the benefit of the doubt.
+    return { valid: true, score: 10, message: `Accepted (${reason})` };
+  };
+
+  const name = validateItem(inputs.name);
+  const place = validateItem(inputs.place);
+  const animal = validateItem(inputs.animal);
+  const thing = validateItem(inputs.thing);
+
+  return {
+    name,
+    place,
+    animal,
+    thing,
+    totalRoundScore: name.score + place.score + animal.score + thing.score
+  };
+};
 
 export const validateAnswers = async (
   letter: string,
@@ -11,16 +42,11 @@ export const validateAnswers = async (
 ): Promise<ValidationResult> => {
   const apiKey = process.env.API_KEY;
 
-  // Graceful fallback if key is missing
+  // 1. If no API Key is provided, immediately use local fallback.
+  // This allows the game to be played "offline" or without setup.
   if (!apiKey || apiKey === 'undefined' || apiKey === '') {
-    console.error("API Key is missing. Please set API_KEY in your environment variables.");
-    return {
-      name: { valid: false, score: 0, message: "API Key Missing" },
-      place: { valid: false, score: 0, message: "Check Config" },
-      animal: { valid: false, score: 0, message: "No Key Found" },
-      thing: { valid: false, score: 0, message: "Set API_KEY" },
-      totalRoundScore: 0
-    };
+    console.warn("API Key missing. Using local validation.");
+    return localValidate(letter, inputs, "Offline Mode");
   }
 
   const ai = new GoogleGenAI({ apiKey: apiKey });
@@ -113,23 +139,17 @@ export const validateAnswers = async (
   } catch (error: any) {
     console.error("Gemini Validation Error:", error);
     
-    // Determine a user-friendly error message
-    let shortError = "Error";
+    // 2. Determine if it's a quota issue or other transient error
+    let shortError = "AI Busy";
     const msg = error?.message || "";
     
-    if (msg.includes("401") || msg.includes("403")) shortError = "Invalid API Key";
-    else if (msg.includes("429")) shortError = "Quota Exceeded";
-    else if (msg.includes("404")) shortError = "Model Issue";
-    else if (msg.includes("500") || msg.includes("503")) shortError = "Server Busy";
-    else if (msg.includes("Safety")) shortError = "Safety Block";
-    else shortError = "Connection Failed";
+    if (msg.includes("429")) shortError = "Quota Limit"; // Quota exceeded
+    else if (msg.includes("401") || msg.includes("403")) shortError = "Bad Key";
+    else if (msg.includes("503")) shortError = "Server Busy";
+    else if (msg.includes("Failed to fetch")) shortError = "No Internet";
 
-    return {
-      name: { valid: false, score: 0, message: shortError },
-      place: { valid: false, score: 0, message: shortError },
-      animal: { valid: false, score: 0, message: shortError },
-      thing: { valid: false, score: 0, message: shortError },
-      totalRoundScore: 0
-    };
+    // 3. Fallback to local validation so the user can continue playing
+    // The message will indicate why AI wasn't used (e.g., "Accepted (Quota Limit)")
+    return localValidate(letter, inputs, shortError);
   }
 };
