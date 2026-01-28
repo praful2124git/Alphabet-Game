@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { GameInputs, ValidationResult } from "../types";
 
@@ -15,9 +16,9 @@ export const validateAnswers = async (
     console.error("API Key is missing. Please set API_KEY in your environment variables.");
     return {
       name: { valid: false, score: 0, message: "API Key Missing" },
-      place: { valid: false, score: 0, message: "Contact Host" },
-      animal: { valid: false, score: 0, message: "To Fix" },
-      thing: { valid: false, score: 0, message: "Deployment" },
+      place: { valid: false, score: 0, message: "Check Config" },
+      animal: { valid: false, score: 0, message: "No Key Found" },
+      thing: { valid: false, score: 0, message: "Set API_KEY" },
       totalRoundScore: 0
     };
   }
@@ -29,20 +30,17 @@ export const validateAnswers = async (
     The current letter is "${letter}".
     
     Evaluate the following user inputs:
-    1. Name: "${inputs.name}"
-    2. Place: "${inputs.place}"
-    3. Animal: "${inputs.animal}"
-    4. Thing: "${inputs.thing}"
+    ${JSON.stringify(inputs, null, 2)}
 
-    For each category:
+    For each category (name, place, animal, thing):
     - Check if the word starts with the letter "${letter}" (case-insensitive).
     - Check if the word is a valid entry for that category.
-    - Be lenient with spelling if it is phonetically close, but strict about the starting letter.
-    - If the input is empty, it is invalid.
+    - Be lenient with spelling if it is phonetically close.
+    - If the input is empty or just the letter itself, it is invalid.
     - Assign a score: 10 for valid, 0 for invalid.
-    - Provide a short, fun message explaining why it is valid or invalid (max 10 words).
+    - Provide a short, fun message explaining why it is valid or invalid (max 6 words).
 
-    Return the result in strict JSON format.
+    Return the result in strict JSON format matching the schema.
   `;
 
   try {
@@ -96,7 +94,7 @@ export const validateAnswers = async (
     });
 
     const jsonText = response.text;
-    if (!jsonText) throw new Error("No response from AI");
+    if (!jsonText) throw new Error("Empty response from AI");
 
     const parsed = JSON.parse(jsonText);
     
@@ -112,14 +110,25 @@ export const validateAnswers = async (
       totalRoundScore
     } as ValidationResult;
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Validation Error:", error);
-    // Fallback in case of error (e.g., API issues)
+    
+    // Determine a user-friendly error message
+    let shortError = "Error";
+    const msg = error?.message || "";
+    
+    if (msg.includes("401") || msg.includes("403")) shortError = "Invalid API Key";
+    else if (msg.includes("429")) shortError = "Quota Exceeded";
+    else if (msg.includes("404")) shortError = "Model Issue";
+    else if (msg.includes("500") || msg.includes("503")) shortError = "Server Busy";
+    else if (msg.includes("Safety")) shortError = "Safety Block";
+    else shortError = "Connection Failed";
+
     return {
-      name: { valid: false, score: 0, message: "Error validating" },
-      place: { valid: false, score: 0, message: "Error validating" },
-      animal: { valid: false, score: 0, message: "Error validating" },
-      thing: { valid: false, score: 0, message: "Error validating" },
+      name: { valid: false, score: 0, message: shortError },
+      place: { valid: false, score: 0, message: shortError },
+      animal: { valid: false, score: 0, message: shortError },
+      thing: { valid: false, score: 0, message: shortError },
       totalRoundScore: 0
     };
   }
