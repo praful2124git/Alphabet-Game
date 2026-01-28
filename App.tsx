@@ -7,6 +7,7 @@ import { LoadingScreen } from './components/LoadingScreen';
 import { validateAnswers } from './services/geminiService';
 import { GameStatus, GameInputs, ValidationResult, GameMode, PlayerProfile } from './types';
 import { useMultiplayer } from './hooks/useMultiplayer';
+import { playSound } from './utils/sound';
 
 // prettier-ignore
 const ALPHABET = "ABCDEFGHIJKLMNOPRSTW"; 
@@ -14,6 +15,9 @@ const ALPHABET = "ABCDEFGHIJKLMNOPRSTW";
 const TOTAL_ROUNDS = 5;
 
 const App: React.FC = () => {
+  // Theme State
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
   const [status, setStatus] = useState<GameStatus>('MENU');
   const [gameMode, setGameMode] = useState<GameMode>('SINGLE');
   const [duration, setDuration] = useState(60);
@@ -28,6 +32,7 @@ const App: React.FC = () => {
   // My current round state
   const [lastInputs, setLastInputs] = useState<GameInputs | null>(null);
   const [lastValidation, setLastValidation] = useState<ValidationResult | null>(null);
+  const [forceSubmit, setForceSubmit] = useState(false);
 
   // Opponent current round state
   const [opponentInputs, setOpponentInputs] = useState<GameInputs | null>(null);
@@ -50,6 +55,17 @@ const App: React.FC = () => {
     clearMessages
   } = useMultiplayer();
 
+  // --- Theme Toggle Logic ---
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
+
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
+
   // --- Multiplayer Message Handling ---
   useEffect(() => {
     if (messages.length > 0) {
@@ -57,17 +73,14 @@ const App: React.FC = () => {
       
       switch (lastMsg.type) {
         case 'JOINED':
-          // Host received a join request. 
-          // We accept this even if gameMode is 'SINGLE' because we are in the lobby setup phase.
           setOpponentProfile(lastMsg.profile);
-          // Send Welcome back so guest knows who host is
           sendMessage({ type: 'WELCOME', profile: userProfile });
+          playSound('joined');
           break;
 
         case 'WELCOME':
-          // Guest received welcome from host
-          // We accept this if we are trying to join (MULTI_GUEST) or in lobby
           setOpponentProfile(lastMsg.profile);
+          playSound('joined');
           break;
 
         case 'START_ROUND':
@@ -80,27 +93,34 @@ const App: React.FC = () => {
             setTimeout(() => setStatus('PLAYING'), 2000);
           }
           break;
+
+        case 'STOP_ROUND':
+          // Opponent hit stop. Force submit my answers immediately.
+          if (status === 'PLAYING') {
+            setForceSubmit(true);
+          }
+          break;
+
         case 'SUBMIT_ANSWERS':
-          // Only accept if it matches current round index
           if (lastMsg.roundIndex === currentRoundIndex) {
             setOpponentInputs(lastMsg.inputs);
             setOpponentValidation(lastMsg.validation);
           }
           break;
+
         case 'GAME_OVER':
           setStatus('GAME_OVER');
           break;
       }
     }
-  }, [messages, gameMode, currentRoundIndex, userProfile]);
+  }, [messages, gameMode, currentRoundIndex, userProfile, status]);
 
   // --- Trigger handshake on connection ---
   useEffect(() => {
     if (isConnected && gameMode === 'MULTI_GUEST') {
-      // Send my profile to host immediately upon connection
       sendMessage({ type: 'JOINED', profile: userProfile });
     }
-  }, [isConnected, gameMode]); // Removing userProfile from dep array to avoid loops
+  }, [isConnected, gameMode]);
 
   // --- Score Calculation & Collision Logic ---
   useEffect(() => {
@@ -111,10 +131,9 @@ const App: React.FC = () => {
       return;
     }
 
-    // Multiplayer Logic: Wait until both have submitted
     if (lastValidation && lastInputs && opponentValidation && opponentInputs) {
-      const myRes = JSON.parse(JSON.stringify(lastValidation)); // Deep copy
-      const oppRes = JSON.parse(JSON.stringify(opponentValidation)); // Deep copy
+      const myRes = JSON.parse(JSON.stringify(lastValidation));
+      const oppRes = JSON.parse(JSON.stringify(opponentValidation));
 
       let myRoundScore = 0;
       let oppRoundScore = 0;
@@ -122,13 +141,11 @@ const App: React.FC = () => {
       const keys: (keyof GameInputs)[] = ['name', 'place', 'animal', 'thing'];
 
       keys.forEach(key => {
-        // Basic scores from Gemini
         let myScore = myRes[key].score;
         let oppScore = oppRes[key].score;
         let myMsg = myRes[key].message;
         let oppMsg = oppRes[key].message;
 
-        // Check for collision (same answer)
         const myWord = lastInputs[key].trim().toLowerCase();
         const oppWord = opponentInputs[key].trim().toLowerCase();
 
@@ -138,7 +155,6 @@ const App: React.FC = () => {
           myMsg = "Same answer as opponent! (5pts)";
           oppMsg = "Same answer! (5pts)";
           
-          // Update messages in the result object
           myRes[key].message = myMsg;
           myRes[key].score = myScore;
         }
@@ -155,12 +171,11 @@ const App: React.FC = () => {
     }
   }, [lastValidation, lastInputs, opponentValidation, opponentInputs, gameMode]);
 
-  // Track History of Scores
+  // Track History
   const [scoresHistory, setScoresHistory] = useState<{my: number, opp: number}[]>([]);
 
   useEffect(() => {
      if (finalMyResult && (gameMode === 'SINGLE' || finalOpponentResult)) {
-        // Only update history if we haven't recorded this round yet
         if (scoresHistory.length === currentRoundIndex) {
            const myScore = finalMyResult.totalRoundScore;
            const oppScore = gameMode === 'SINGLE' ? 0 : (finalOpponentResult?.totalRoundScore || 0);
@@ -172,7 +187,6 @@ const App: React.FC = () => {
   const currentTotalMyScore = scoresHistory.reduce((acc, curr) => acc + curr.my, 0);
   const currentTotalOppScore = scoresHistory.reduce((acc, curr) => acc + curr.opp, 0);
 
-
   const startGameSingle = (selectedDuration: number) => {
     setGameMode('SINGLE');
     setDuration(selectedDuration);
@@ -181,18 +195,13 @@ const App: React.FC = () => {
   };
 
   const startHostGame = (selectedDuration: number) => {
-    if (!isConnected || !opponentProfile) return; // Prevent crash if no one joined
+    if (!isConnected || !opponentProfile) return;
     setGameMode('MULTI_HOST');
     setDuration(selectedDuration);
-    
-    // We manually reset game variables here to avoid race conditions with state updates
     setScoresHistory([]);
     setCurrentRoundIndex(0);
     setRoundLetters([]);
     startNewRoundCleanup();
-
-    // Pass true to indicate we are forcefully starting as host
-    // and pass the initial round index (0) explicitly
     startRound(true, 0);
   };
 
@@ -216,11 +225,11 @@ const App: React.FC = () => {
     setOpponentValidation(null);
     setFinalMyResult(null);
     setFinalOpponentResult(null);
+    setForceSubmit(false);
   };
 
   const startRound = (isForceHost = false, explicitRoundIndex?: number) => {
     let letter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-    // Simple retry to avoid duplicates
     let attempts = 0;
     while (roundLetters.includes(letter) && attempts < 50) {
        letter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
@@ -232,10 +241,8 @@ const App: React.FC = () => {
     startNewRoundCleanup();
     setStatus('COUNTDOWN');
 
-    // Determine the round index to send (use explicit if provided, else current state)
     const roundIdxToSend = explicitRoundIndex !== undefined ? explicitRoundIndex : currentRoundIndex;
 
-    // Check if we are hosting (either via state or force flag)
     if (gameMode === 'MULTI_HOST' || isForceHost) {
       sendMessage({
         type: 'START_ROUND',
@@ -251,7 +258,15 @@ const App: React.FC = () => {
     }, 2000);
   };
 
+  // Called when this user stops the game manually (clicks Stop button)
+  const handleManualStop = () => {
+    if (gameMode !== 'SINGLE') {
+      sendMessage({ type: 'STOP_ROUND' });
+    }
+  };
+
   const handleRoundSubmit = async (inputs: GameInputs) => {
+    playSound('submit');
     setStatus('VALIDATING');
     setLastInputs(inputs);
 
@@ -272,24 +287,8 @@ const App: React.FC = () => {
 
   const handleNext = () => {
     if (currentRoundIndex < TOTAL_ROUNDS - 1) {
-      // Increment locally
       const nextIndex = currentRoundIndex + 1;
       setCurrentRoundIndex(nextIndex);
-      
-      // Start next round (passing undefined for forcedHost as state should be updated by now, and explicit index)
-      // Actually we can rely on state now as this is user triggered well after mount
-      // But to be safe in multiplayer sync, we just call startRound() which uses state.
-      // Wait, startRound uses currentRoundIndex state. React state update is async.
-      // We must pass the NEXT index explicitly to startRound to ensure the message is correct.
-      
-      // But we can't pass 'nextIndex' to startRound easily without refactoring startRound logic completely
-      // because startRound generates the letter and sends the message.
-      
-      // Better approach for Next Round:
-      // 1. Update state
-      // 2. Use useEffect to trigger startRound? No, user click.
-      
-      // Let's modify startRound to use a "nextIndex" param if provided, otherwise use state.
       startRound(false, nextIndex);
     } else {
       setStatus('GAME_OVER');
@@ -300,27 +299,28 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="h-screen w-full bg-slate-50 flex flex-col overflow-hidden">
+    <div className="h-screen w-full bg-stone-50 dark:bg-stone-950 flex flex-col overflow-hidden transition-colors duration-300">
+      
       {/* Top Bar for Global State */}
       {status !== 'MENU' && (
-        <div className="bg-white border-b border-slate-200 p-4 flex justify-between items-center shadow-sm z-10">
-           <div className="font-bold text-slate-600 text-xs md:text-base flex items-center gap-2">
-             <span className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded-md">Round {currentRoundIndex + 1} / {TOTAL_ROUNDS}</span>
+        <div className="bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 p-4 flex justify-between items-center shadow-sm z-10">
+           <div className="font-bold text-stone-600 dark:text-stone-300 text-xs md:text-base flex items-center gap-2">
+             <span className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 px-2 py-1 rounded-md">Round {currentRoundIndex + 1} / {TOTAL_ROUNDS}</span>
            </div>
            
            <div className="flex gap-4 md:gap-8">
              <div className="flex items-center gap-2">
                <span className="text-xl">{userProfile.avatar}</span>
                <div className="flex flex-col items-end">
-                 <span className="text-xs font-bold text-slate-400 uppercase">You</span>
-                 <span className="font-black text-slate-800 text-lg leading-none">{currentTotalMyScore}</span>
+                 <span className="text-xs font-bold text-stone-400 uppercase">You</span>
+                 <span className="font-black text-stone-800 dark:text-stone-100 text-lg leading-none">{currentTotalMyScore}</span>
                </div>
              </div>
              {gameMode !== 'SINGLE' && opponentProfile && (
                <div className="flex items-center gap-2">
                  <div className="flex flex-col items-start">
-                   <span className="text-xs font-bold text-slate-400 uppercase">{opponentProfile.name}</span>
-                   <span className="font-black text-slate-800 text-lg leading-none">{currentTotalOppScore}</span>
+                   <span className="text-xs font-bold text-stone-400 uppercase">{opponentProfile.name}</span>
+                   <span className="font-black text-stone-800 dark:text-stone-100 text-lg leading-none">{currentTotalOppScore}</span>
                  </div>
                  <span className="text-xl">{opponentProfile.avatar}</span>
                </div>
@@ -331,6 +331,16 @@ const App: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex-grow relative overflow-hidden">
+        
+        {/* Theme Toggle Button (Visible in Menu or Corner) */}
+        <button 
+          onClick={toggleTheme}
+          className="absolute top-4 right-4 z-50 p-2 rounded-full bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-300 hover:scale-110 transition-all shadow-md"
+          title="Toggle Theme"
+        >
+          {isDarkMode ? '☀️' : '🌙'}
+        </button>
+
         {status === 'MENU' && (
           <StartScreen 
             onStartSingle={startGameSingle}
@@ -346,7 +356,7 @@ const App: React.FC = () => {
         )}
 
         {status === 'COUNTDOWN' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-indigo-600 z-50">
+          <div className="absolute inset-0 flex items-center justify-center bg-orange-600 dark:bg-orange-700 z-50">
             <div className="text-center animate-pop-in">
               <p className="text-white/80 text-2xl font-bold mb-4">Letter for this round</p>
               <div className="text-9xl font-black text-white drop-shadow-2xl">
@@ -357,14 +367,19 @@ const App: React.FC = () => {
         )}
 
         {status === 'PLAYING' && (
-          <GameRound letter={currentLetter} duration={duration} onSubmit={handleRoundSubmit} />
+          <GameRound 
+            letter={currentLetter} 
+            duration={duration} 
+            onSubmit={handleRoundSubmit} 
+            onManualStop={handleManualStop}
+            forceSubmit={forceSubmit}
+          />
         )}
 
         {status === 'VALIDATING' && <LoadingScreen />}
 
         {status === 'ROUND_RESULT' && lastInputs && (
            <>
-             {/* If single player, or if multiplayer AND we have calculated final results */}
              {(gameMode === 'SINGLE' && finalMyResult) || (gameMode !== 'SINGLE' && finalMyResult && finalOpponentResult) ? (
                 <RoundResult 
                   inputs={lastInputs} 
@@ -378,31 +393,31 @@ const App: React.FC = () => {
              ) : (
                <div className="flex flex-col items-center justify-center h-full animate-pop-in">
                   <div className="text-6xl mb-4 animate-bounce">{opponentProfile?.avatar || '👤'}</div>
-                  <h2 className="text-2xl font-bold text-slate-700">Waiting for {opponentProfile?.name || 'Opponent'}...</h2>
-                  <p className="text-slate-500 mt-2">The scores will be revealed once both players submit.</p>
+                  <h2 className="text-2xl font-bold text-stone-700 dark:text-stone-200">Waiting for {opponentProfile?.name || 'Opponent'}...</h2>
+                  <p className="text-stone-500 dark:text-stone-400 mt-2">The scores will be revealed once both players submit.</p>
                </div>
              )}
            </>
         )}
 
         {status === 'GAME_OVER' && (
-          <div className="flex flex-col items-center justify-center h-full p-8 animate-pop-in text-center">
+          <div className="flex flex-col items-center justify-center h-full p-8 animate-pop-in text-center text-stone-800 dark:text-stone-100">
              <div className="text-6xl mb-6">🏆</div>
-             <h1 className="text-4xl font-black text-slate-800 mb-2">Game Over!</h1>
+             <h1 className="text-4xl font-black mb-2">Game Over!</h1>
              
              <div className="flex gap-8 justify-center mt-8">
-               <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-100 min-w-[140px]">
+               <div className="bg-white dark:bg-stone-800 p-6 rounded-2xl shadow-md border border-stone-200 dark:border-stone-700 min-w-[140px]">
                   <div className="text-4xl mb-2">{userProfile.avatar}</div>
-                  <p className="text-slate-500 text-sm font-bold uppercase mb-1">You</p>
-                  <div className="text-5xl font-black text-indigo-600">
+                  <p className="text-stone-500 dark:text-stone-400 text-sm font-bold uppercase mb-1">You</p>
+                  <div className="text-5xl font-black text-orange-600 dark:text-orange-500">
                     {currentTotalMyScore}
                   </div>
                </div>
                {gameMode !== 'SINGLE' && opponentProfile && (
-                 <div className="bg-white p-6 rounded-2xl shadow-md border border-slate-100 min-w-[140px]">
+                 <div className="bg-white dark:bg-stone-800 p-6 rounded-2xl shadow-md border border-stone-200 dark:border-stone-700 min-w-[140px]">
                     <div className="text-4xl mb-2">{opponentProfile.avatar}</div>
-                    <p className="text-slate-500 text-sm font-bold uppercase mb-1">{opponentProfile.name}</p>
-                    <div className="text-5xl font-black text-pink-500">
+                    <p className="text-stone-500 dark:text-stone-400 text-sm font-bold uppercase mb-1">{opponentProfile.name}</p>
+                    <div className="text-5xl font-black text-stone-500 dark:text-stone-300">
                       {currentTotalOppScore}
                     </div>
                  </div>
@@ -416,7 +431,7 @@ const App: React.FC = () => {
                   ) : currentTotalMyScore < currentTotalOppScore ? (
                     <span className="text-red-500 drop-shadow-sm">You Lost 😔</span>
                   ) : (
-                    <span className="text-slate-500">It's a Tie! 🤝</span>
+                    <span className="text-stone-500">It's a Tie! 🤝</span>
                   )}
                 </div>
              )}
@@ -428,7 +443,7 @@ const App: React.FC = () => {
                 setOpponentValidation(null);
                 setStatus('MENU');
               }}
-              className="mt-12 bg-slate-800 hover:bg-slate-900 text-white text-xl font-bold py-4 px-10 rounded-full shadow-lg transition-transform hover:scale-105"
+              className="mt-12 bg-stone-800 dark:bg-stone-700 hover:bg-stone-900 dark:hover:bg-stone-600 text-white text-xl font-bold py-4 px-10 rounded-full shadow-lg transition-transform hover:scale-105"
              >
                Main Menu
              </button>

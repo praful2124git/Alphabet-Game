@@ -51,6 +51,7 @@ export type MultiplayerMessage =
   | { type: 'JOINED'; profile: PlayerProfile }
   | { type: 'WELCOME'; profile: PlayerProfile }
   | { type: 'START_ROUND'; letter: string; roundIndex: number; totalRounds: number; duration: number }
+  | { type: 'STOP_ROUND' }
   | { type: 'SUBMIT_ANSWERS'; inputs: GameInputs; validation: ValidationResult; roundIndex: number }
   | { type: 'PLAY_AGAIN' }
   | { type: 'GAME_OVER' };
