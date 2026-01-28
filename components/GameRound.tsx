@@ -157,7 +157,7 @@ export const GameRound: React.FC<GameRoundProps> = ({ letter, duration, onSubmit
           onClick={handleStopClick}
           className="bg-orange-600 hover:bg-orange-700 text-white text-lg font-bold py-3 px-12 rounded-full shadow-lg hover:shadow-xl transition-all transform hover:scale-105 active:scale-95 w-full md:w-auto"
         >
-          Stop & Submit
+          Submit
         </button>
       </div>
     </div>
@@ -175,14 +175,14 @@ interface InputFieldProps {
 
 const InputField: React.FC<InputFieldProps> = ({ label, icon, value, onChange, placeholder, autoFocus }) => (
   <div className="bg-matte-card p-6 rounded-2xl shadow-sm border-2 border-transparent focus-within:border-orange-500 transition-all group">
-    <label className="block text-stone-300 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+    <label className="block text-stone-700 dark:text-stone-300 text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
       <span className="text-lg">{icon}</span> {label}
     </label>
     <input
       type="text"
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full text-2xl font-bold text-white placeholder-stone-500 outline-none bg-transparent"
+      className="w-full text-2xl font-bold text-stone-900 dark:text-white placeholder-stone-500 dark:placeholder-stone-400 outline-none bg-transparent"
       placeholder={placeholder}
       autoComplete="off"
       autoFocus={autoFocus}
