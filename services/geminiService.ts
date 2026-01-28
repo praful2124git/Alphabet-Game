@@ -1,5 +1,4 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { GameInputs, ValidationResult } from "../types";
 
 // Helper for local validation when AI is unavailable or quota is exceeded
@@ -42,15 +41,13 @@ export const validateAnswers = async (
 ): Promise<ValidationResult> => {
   const apiKey = process.env.API_KEY;
 
-  // 1. If no API Key is provided, immediately use local fallback.
-  // This allows the game to be played "offline" or without setup.
+  // 1. Check for API Key
   if (!apiKey || apiKey === 'undefined' || apiKey === '') {
     console.warn("API Key missing. Using local validation.");
     return localValidate(letter, inputs, "Offline Mode");
   }
 
-  const ai = new GoogleGenAI({ apiKey: apiKey });
-
+  // Construct the prompt for Llama 3
   const prompt = `
     You are the judge of a "Name Place Animal Thing" game.
     The current letter is "${letter}".
@@ -66,60 +63,49 @@ export const validateAnswers = async (
     - Assign a score: 10 for valid, 0 for invalid.
     - Provide a short, fun message explaining why it is valid or invalid (max 6 words).
 
-    Return the result in strict JSON format matching the schema.
+    Return the result in strict JSON format matching this schema:
+    {
+      "name": { "valid": boolean, "score": number, "message": string },
+      "place": { "valid": boolean, "score": number, "message": string },
+      "animal": { "valid": boolean, "score": number, "message": string },
+      "thing": { "valid": boolean, "score": number, "message": string }
+    }
   `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            name: {
-              type: Type.OBJECT,
-              properties: {
-                valid: { type: Type.BOOLEAN },
-                score: { type: Type.INTEGER },
-                message: { type: Type.STRING },
-              },
-              required: ["valid", "score", "message"],
-            },
-            place: {
-              type: Type.OBJECT,
-              properties: {
-                valid: { type: Type.BOOLEAN },
-                score: { type: Type.INTEGER },
-                message: { type: Type.STRING },
-              },
-              required: ["valid", "score", "message"],
-            },
-            animal: {
-              type: Type.OBJECT,
-              properties: {
-                valid: { type: Type.BOOLEAN },
-                score: { type: Type.INTEGER },
-                message: { type: Type.STRING },
-              },
-              required: ["valid", "score", "message"],
-            },
-            thing: {
-              type: Type.OBJECT,
-              properties: {
-                valid: { type: Type.BOOLEAN },
-                score: { type: Type.INTEGER },
-                message: { type: Type.STRING },
-              },
-              required: ["valid", "score", "message"],
-            },
-          },
-        },
+    // 2. Call Groq API via fetch
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
       },
+      body: JSON.stringify({
+        messages: [
+          { 
+            role: "system", 
+            content: "You are a helpful game judge that outputs only valid JSON." 
+          },
+          { 
+            role: "user", 
+            content: prompt 
+          }
+        ],
+        model: "llama-3.1-8b-instant",
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+        max_tokens: 1000
+      })
     });
 
-    const jsonText = response.text;
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData?.error?.message || `HTTP Error ${response.status}`);
+    }
+
+    const data = await response.json();
+    const jsonText = data.choices?.[0]?.message?.content;
+
     if (!jsonText) throw new Error("Empty response from AI");
 
     const parsed = JSON.parse(jsonText);
@@ -137,19 +123,18 @@ export const validateAnswers = async (
     } as ValidationResult;
 
   } catch (error: any) {
-    console.error("Gemini Validation Error:", error);
+    console.error("Groq/AI Validation Error:", error);
     
-    // 2. Determine if it's a quota issue or other transient error
+    // 3. Error Handling & Fallback
     let shortError = "AI Busy";
-    const msg = error?.message || "";
+    const msg = (error?.message || "").toLowerCase();
     
-    if (msg.includes("429")) shortError = "Quota Limit"; // Quota exceeded
+    if (msg.includes("429")) shortError = "Quota Limit"; 
     else if (msg.includes("401") || msg.includes("403")) shortError = "Bad Key";
-    else if (msg.includes("503")) shortError = "Server Busy";
-    else if (msg.includes("Failed to fetch")) shortError = "No Internet";
+    else if (msg.includes("500") || msg.includes("503")) shortError = "Server Error";
+    else if (msg.includes("fetch")) shortError = "No Internet";
 
-    // 3. Fallback to local validation so the user can continue playing
-    // The message will indicate why AI wasn't used (e.g., "Accepted (Quota Limit)")
+    // Fallback to local validation
     return localValidate(letter, inputs, shortError);
   }
 };
